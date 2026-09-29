@@ -27,6 +27,30 @@ function toast(msg, ms = 3200) {
   setTimeout(() => el.remove(), ms);
 }
 
+/* ---------------- voice recorder helpers ----------------
+   Honest limitation: getUserMedia/MediaRecorder captures the MICROPHONE
+   ONLY. The YouTube backing track plays in a cross-origin iframe whose
+   audio the page cannot capture, so recordings are VOCALS-ONLY. The UI
+   labels them exactly that way. */
+// The most recent voice clip, kept here (not on the player element) so it
+// survives tab switches: leaving the Player mid-recording stops the mic
+// gracefully but the finished clip stays available when you come back.
+const recStore = { clip: null }; // {url, title, mime, ext} | null
+
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+}
+
+function recFilename(title, ext) {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+  const safe = String(title || "karaoke").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "karaoke";
+  return `${safe}-vocals-${stamp}.${ext}`;
+}
+
 /* ---------------- shell / router ---------------- */
 class YtkApp extends HTMLElement {
   connectedCallback() {
@@ -338,9 +362,11 @@ class YtkPlayer extends HTMLElement {
         <button class="small" id="p-next">⏭ Next</button>
         <button class="small" id="p-restart">↺ Restart</button>
         <button class="small bm" id="p-save" hidden>☆ Save</button>
+        <button class="small" id="p-rec" title="Record your voice (mic only — vocals only)">● Rec</button>
         <span class="spacer"></span>
         <button class="small" id="p-fs">⛶ Fullscreen</button>
       </div>
+      <div class="rec-panel" id="rec-panel" hidden></div>
       <div class="upnext"><h2>Up next</h2><div id="upnext"></div></div>`;
     this.wrap = this.querySelector("#wrap");
     this.saveBtn = this.querySelector("#p-save");
@@ -351,10 +377,14 @@ class YtkPlayer extends HTMLElement {
     this.querySelector("#p-next").onclick = () => this.advance(true);
     this.querySelector("#p-restart").onclick = () => this.restart();
     this.saveBtn.onclick = () => this.toggleSave();
+    this.recBtn = this.querySelector("#p-rec");
+    this.recBtn.onclick = () => this.toggleRec();
+    this.recState = null; // active recording: {recorder, stream, chunks, mime, startedAt, timer, done}
     this.querySelector("#p-fs").onclick = () => {
       if (document.fullscreenElement) document.exitFullscreen();
       else this.wrap.requestFullscreen && this.wrap.requestFullscreen();
     };
+    this.renderRecPanel(); // show a kept clip from an earlier visit, if any
     this.boot();
   }
 
@@ -370,7 +400,12 @@ class YtkPlayer extends HTMLElement {
     this.poller = setInterval(() => this.poll(), 2000);
     this.addEventListener("disconnect", () => clearInterval(this.poller));
   }
-  disconnectedCallback() { clearInterval(this.poller); }
+  disconnectedCallback() {
+    clearInterval(this.poller);
+    // Navigating away mid-recording: stop gracefully so the mic is released
+    // and the finished clip is kept in recStore (it re-renders on return).
+    if (this.recState) this.stopRec();
+  }
 
   waitForYT(cb) {
     if (window.YT && YT.Player) { this.ytReady = true; cb(); return; }
@@ -592,6 +627,142 @@ class YtkPlayer extends HTMLElement {
     else this.yt.playVideo();
   }
   restart() { if (this.yt && this.yt.seekTo) { this.yt.seekTo(0, true); this.yt.playVideo(); } }
+
+  /* ---------------- voice recorder (mic only — vocals only) ---------------- */
+  pickRecMime() {
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported) {
+      for (const c of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]) {
+        try { if (MediaRecorder.isTypeSupported(c)) return c; } catch (e) { /* try next */ }
+      }
+    }
+    return "";
+  }
+  recExt(mime) { return /mp4/i.test(mime || "") ? "m4a" : "webm"; }
+
+  toggleRec() {
+    if (this.recState) this.stopRec();
+    else this.startRec();
+  }
+
+  async startRec() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast("Voice recording isn't available here — this browser exposes no microphone.");
+      return;
+    }
+    if (!window.MediaRecorder) {
+      toast("Voice recording isn't supported in this browser.");
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      const name = (err && err.name) || "";
+      toast(name === "NotAllowedError" || name === "SecurityError"
+        ? "Microphone permission denied — allow mic access to record your voice."
+        : "Couldn't open the microphone" + (name ? ` (${name})` : "") + ".");
+      return;
+    }
+    const mime = this.pickRecMime();
+    const st = { stream, chunks: [], mime, startedAt: Date.now(), timer: null, done: false, recorder: null };
+    try {
+      st.recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    } catch (err) {
+      stream.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} });
+      toast("Couldn't start the recorder (" + err.message + ").");
+      return;
+    }
+    st.recorder.ondataavailable = (e) => { if (e.data && e.data.size) st.chunks.push(e.data); };
+    st.recorder.onstop = () => this.finishRec(st);
+    try {
+      st.recorder.start(500);
+    } catch (err) {
+      stream.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} });
+      toast("Couldn't start the recorder (" + err.message + ").");
+      return;
+    }
+    this.recState = st;
+    this.recBtn.textContent = "⏹ Stop";
+    this.recBtn.classList.add("recording");
+    this.renderRecRecording();
+    st.timer = setInterval(() => this.tickRecTimer(), 500);
+    this.tickRecTimer();
+    // Note: YouTube playback is untouched — the mic records independently.
+  }
+
+  tickRecTimer() {
+    const el = this.querySelector("#rec-timer");
+    if (el && this.recState) el.textContent = fmtElapsed(Date.now() - this.recState.startedAt);
+  }
+
+  stopRec() {
+    const st = this.recState;
+    if (!st) return;
+    this.recState = null;
+    clearInterval(st.timer);
+    this.recBtn.textContent = "● Rec";
+    this.recBtn.classList.remove("recording");
+    if (st.recorder && st.recorder.state !== "inactive") {
+      try { st.recorder.stop(); return; } catch (e) { /* fall through to finish */ }
+    }
+    this.finishRec(st);
+  }
+
+  finishRec(st) {
+    if (!st || st.done) return;
+    st.done = true;
+    try { st.stream.getTracks().forEach((t) => t.stop()); } catch (e) {} // release the mic
+    const type = st.mime || "audio/webm";
+    const blob = new Blob(st.chunks, { type });
+    if (!blob.size) {
+      toast("Recording came out empty — nothing saved.");
+      this.renderRecPanel();
+      return;
+    }
+    if (recStore.clip) { try { URL.revokeObjectURL(recStore.clip.url); } catch (e) {} }
+    const t = this.currentTrack();
+    recStore.clip = {
+      url: URL.createObjectURL(blob),
+      title: t ? t.title : "karaoke",
+      mime: type,
+      ext: this.recExt(type),
+    };
+    this.renderRecPanel();
+    toast("Voice clip ready — vocals only 🎙");
+  }
+
+  clearClip() {
+    if (recStore.clip) { try { URL.revokeObjectURL(recStore.clip.url); } catch (e) {} }
+    recStore.clip = null;
+    this.renderRecPanel();
+  }
+
+  renderRecRecording() {
+    const panel = this.querySelector("#rec-panel");
+    if (!panel) return;
+    panel.hidden = false;
+    panel.innerHTML = `
+      <div class="rec-status"><span class="rec-dot"></span><span>● REC</span><span class="rec-timer" id="rec-timer">00:00</span></div>
+      <div class="rec-note">Voice recording — <b>vocals only</b>. The backing track keeps playing; only your mic is captured.</div>`;
+  }
+
+  renderRecPanel() {
+    const panel = this.querySelector("#rec-panel");
+    if (!panel || !this.isConnected) return;
+    const clip = recStore.clip;
+    if (!clip) { panel.hidden = true; panel.innerHTML = ""; return; }
+    panel.hidden = false;
+    const fname = recFilename(clip.title, clip.ext);
+    panel.innerHTML = `
+      <div class="rec-status"><span class="rec-dot done"></span><span>Voice clip — vocals only</span></div>
+      <div class="rec-note">Mic recording only — the YouTube backing track can't be captured.</div>
+      <audio controls src="${clip.url}"></audio>
+      <div class="rec-actions">
+        <a class="btn small" href="${clip.url}" download="${esc(fname)}">⬇ Download</a>
+        <button class="small ghost" id="rec-discard">Discard</button>
+      </div>`;
+    panel.querySelector("#rec-discard").onclick = () => this.clearClip();
+  }
 
   async poll() {
     try {

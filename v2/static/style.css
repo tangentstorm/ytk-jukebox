@@ -150,6 +150,29 @@ h2 .count { color: var(--muted); font-weight: 400; font-size: 1rem; }
   margin-top: 12px;
 }
 .player-ctl .spacer { flex: 1; }
+#p-rec.recording { border-color: var(--danger); color: #ff8a92; }
+
+/* voice recorder (mic only — vocals only) */
+.rec-panel {
+  margin-top: 12px; background: var(--panel); border: 1px solid #3a2f8f;
+  border-radius: 14px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.rec-panel[hidden] { display: none; }
+.rec-status { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.05rem; }
+.rec-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--danger); flex: none;
+  animation: recpulse 1.2s ease-in-out infinite;
+}
+.rec-dot.done { animation: none; background: var(--ok); }
+@keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.rec-timer { font-variant-numeric: tabular-nums; font-size: 1.15rem; color: #ff8a92; }
+.rec-note { color: var(--muted); font-size: 0.88rem; line-height: 1.4; }
+.rec-note b { color: var(--text); }
+.rec-panel audio { width: 100%; min-height: 44px; }
+.rec-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.rec-actions .btn, .rec-actions button { flex: 1 1 auto; text-align: center; text-decoration: none; display: inline-block; }
 .toast {
   position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
   background: #241a5e; border: 1px solid #3a2f8f; color: var(--text);
