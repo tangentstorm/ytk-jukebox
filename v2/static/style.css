@@ -182,6 +182,12 @@ h2 .count { color: var(--muted); font-weight: 400; font-size: 1rem; }
 .upnext { margin-top: 16px; }
 .upnext .qitem { margin-bottom: 8px; }
 
+/* voice-search mic button in the search bar */
+.searchbar #mic { font-size: 1.2rem; padding: 10px 14px; min-width: 52px; }
+.searchbar #mic.listening { background: #5e1a1a; border-color: var(--danger); animation: recpulse 1.2s infinite; }
+.mic-hint { color: var(--gold); font-weight: 700; margin: 2px 0 6px; }
+.mic-hint[hidden] { display: none; }
+
 /* ---------- phone layout (360–430px viewports, Android Chrome) ----------
    Responsive only: desktop rules above are untouched. */
 @media (max-width: 640px) {

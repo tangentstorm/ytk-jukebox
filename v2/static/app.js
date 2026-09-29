@@ -180,8 +180,10 @@ class YtkSearch extends HTMLElement {
       <h2>Find a karaoke track</h2>
       <div class="searchbar">
         <input type="search" id="q" placeholder="song title + artist…" autocomplete="off">
+        <button id="mic" title="Voice search" aria-label="Voice search" hidden>🎤</button>
         <button class="primary" id="go">Search</button>
       </div>
+      <div class="mic-hint" id="michint" hidden>🎤 Listening… speak the song name</div>
       <label class="toggle"><input type="checkbox" id="kara" checked> append “karaoke” to the search</label>
       <div class="grid" id="results"></div>
       <div class="empty" id="empty">Search YouTube for your song. ☆ saves it, + queues it for tonight, ▶ plays it right now.</div>`;
@@ -190,7 +192,53 @@ class YtkSearch extends HTMLElement {
     this.empty = this.querySelector("#empty");
     this.querySelector("#go").onclick = () => this.search();
     this.q.addEventListener("keydown", (e) => { if (e.key === "Enter") this.search(); });
+    this.setupVoice();
     this.q.focus();
+  }
+
+  setupVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const btn = this.querySelector("#mic");
+    const hint = this.querySelector("#michint");
+    if (!SR) return; // mic button stays hidden where the API is unavailable
+    btn.hidden = false;
+    let rec = null;
+    const setListening = (on) => {
+      btn.classList.toggle("listening", on);
+      hint.hidden = !on;
+    };
+    btn.onclick = () => {
+      if (rec) { try { rec.stop(); } catch (_) {} return; } // tap again cancels
+      rec = new SR();
+      rec.lang = navigator.language || "en-US";
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      rec.onresult = (e) => {
+        let text = "";
+        for (const r of e.results) text += r[0].transcript;
+        this.q.value = text;
+        if (e.results[e.results.length - 1].isFinal) {
+          const finalText = text.trim();
+          rec = null;
+          setListening(false);
+          if (finalText) { this.q.value = finalText; this.search(); }
+        }
+      };
+      rec.onerror = (e) => {
+        rec = null;
+        setListening(false);
+        const k = e.error;
+        if (k === "aborted") return; // user cancelled via tap — stay silent
+        if (k === "not-allowed" || k === "service-not-allowed")
+          toast("Microphone permission denied — allow mic access to use voice search.");
+        else if (k === "no-speech") toast("Didn't catch that — try again.");
+        else if (k === "audio-capture") toast("No microphone found on this device.");
+        else toast("Voice search isn't available right now — try typing instead.");
+      };
+      rec.onend = () => { rec = null; setListening(false); };
+      try { rec.start(); setListening(true); }
+      catch (err) { rec = null; setListening(false); toast("Voice search couldn't start — try typing instead."); }
+    };
   }
   async search() {
     const q = this.q.value.trim();
