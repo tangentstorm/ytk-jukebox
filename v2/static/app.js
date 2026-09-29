@@ -283,7 +283,7 @@ class YtkSaved extends HTMLElement {
       const g = this.querySelector("#g");
       this.querySelector("#e").hidden = items.length > 0;
       for (const it of items) {
-        g.appendChild(songCard({ videoId: it.videoId, title: it.title, channel: it.channel, thumb: it.thumb, bmId: it.id },
+        g.appendChild(songCard({ videoId: it.video_id, title: it.title, channel: it.channel, thumb: it.thumb, bmId: it.id },
           { unbookmark: true, onBookmarkChange: () => this.load() }));
       }
     } catch (err) {
