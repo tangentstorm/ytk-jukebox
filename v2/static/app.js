@@ -404,6 +404,14 @@ class YtkPlayer extends HTMLElement {
           <div class="now" id="banner-now">🎤 —</div>
           <div class="next" id="banner-next"></div>
         </div>
+        <div class="video-ctl" id="vctl" hidden>
+          <button id="v-play" title="Play/Pause" aria-label="Play/Pause">⏯</button>
+          <button id="v-next" title="Next song" aria-label="Next song">⏭</button>
+          <button id="v-save" title="Save" aria-label="Save" hidden>☆</button>
+          <button id="v-rec" title="Record your voice (mic only — vocals only)" aria-label="Record your voice">●</button>
+          <button id="v-fs" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+        </div>
+        <button class="video-peek" id="vpeek" title="Show controls" aria-label="Show controls" hidden>⋯</button>
       </div>
       <div class="player-ctl">
         <button class="small" id="p-play">⏯ Play/Pause</button>
@@ -428,10 +436,22 @@ class YtkPlayer extends HTMLElement {
     this.recBtn = this.querySelector("#p-rec");
     this.recBtn.onclick = () => this.toggleRec();
     this.recState = null; // active recording: {recorder, stream, chunks, mime, startedAt, timer, done}
-    this.querySelector("#p-fs").onclick = () => {
-      if (document.fullscreenElement) document.exitFullscreen();
-      else this.wrap.requestFullscreen && this.wrap.requestFullscreen();
-    };
+    this.querySelector("#p-fs").onclick = () => this.toggleFullscreen();
+    // On-video overlay bar (lives inside #wrap so it survives fullscreen).
+    // Every button calls the SAME handler as its below-video twin.
+    this.vctl = this.querySelector("#vctl");
+    this.vpeek = this.querySelector("#vpeek");
+    this.saveBtnOv = this.querySelector("#v-save");
+    this.recBtnOv = this.querySelector("#v-rec");
+    this.vctlTimer = null;
+    this.querySelector("#v-play").onclick = () => this.togglePlay();
+    this.querySelector("#v-next").onclick = () => this.advance(true);
+    this.saveBtnOv.onclick = () => this.toggleSave();
+    this.recBtnOv.onclick = () => this.toggleRec();
+    this.querySelector("#v-fs").onclick = () => this.toggleFullscreen();
+    this.vctl.addEventListener("pointerdown", () => this.vctlArm());
+    this.vctl.addEventListener("click", (e) => { if (e.target === this.vctl) this.vctlHide(); });
+    this.vpeek.onclick = () => this.vctlShow();
     this.renderRecPanel(); // show a kept clip from an earlier visit, if any
     this.boot();
   }
@@ -450,6 +470,7 @@ class YtkPlayer extends HTMLElement {
   }
   disconnectedCallback() {
     clearInterval(this.poller);
+    clearTimeout(this.vctlTimer);
     // Navigating away mid-recording: stop gracefully so the mic is released
     // and the finished clip is kept in recStore (it re-renders on return).
     if (this.recState) this.stopRec();
@@ -475,6 +496,7 @@ class YtkPlayer extends HTMLElement {
       this.querySelector("#banner-next").textContent = "Queue is empty — add songs from Search.";
       this.renderUpNext();
       this.refreshSaveBtn();
+      this.vctlHide();
       return;
     }
     this.idx = 0;
@@ -488,6 +510,7 @@ class YtkPlayer extends HTMLElement {
       playerVars: { autoplay: 1, rel: 0, modestbranding: 1 },
       events: {
         onStateChange: (e) => {
+          this.vctlShow(); // e.g. user tapped the video → reveal controls
           if (e.data === YT.PlayerState.ENDED) {
             if (this.direct) this.resumeQueue();
             else this.advance(false);
@@ -496,6 +519,7 @@ class YtkPlayer extends HTMLElement {
         onError: (e) => this.onYtError(e),
       },
     });
+    this.vctlShow();
   }
 
   /* One-off direct play: takes over the player without touching the queue. */
@@ -519,6 +543,7 @@ class YtkPlayer extends HTMLElement {
       this.querySelector("#banner-next").textContent = "That's everything! 🎉";
       this.renderUpNext();
       this.refreshSaveBtn();
+      this.vctlHide();
       if (this.yt) { this.yt.stopVideo(); }
       return;
     }
@@ -534,6 +559,7 @@ class YtkPlayer extends HTMLElement {
       this.querySelector("#banner-next").textContent = "That's everything! 🎉";
       this.renderUpNext();
       this.refreshSaveBtn();
+      this.vctlHide();
       if (this.yt) { this.yt.stopVideo(); }
       return;
     }
@@ -566,21 +592,40 @@ class YtkPlayer extends HTMLElement {
      Hidden when nothing is playing. Never touches queue or playback. */
   refreshSaveBtn() {
     const t = this.currentTrack();
+    const btns = [this.saveBtn, this.saveBtnOv].filter(Boolean);
     if (!t) {
-      this.saveBtn.hidden = true;
+      btns.forEach((b) => { b.hidden = true; });
       this.savedBmId = null;
       return Promise.resolve();
     }
-    this.saveBtn.hidden = false;
+    btns.forEach((b) => { b.hidden = false; });
     const seq = ++this.saveSeq;
     this.savePending = (async () => {
       const saved = await GET("/api/bookmarks");
       if (seq !== this.saveSeq) return; // a newer track already took over
       const hit = saved.find((b) => b.video_id === t.videoId);
       this.savedBmId = hit ? hit.id : null;
-      this.saveBtn.textContent = hit ? "★ Saved" : "☆ Save";
+      this.paintSaveBtns(!!hit);
     })().catch(() => {});
     return this.savePending;
+  }
+
+  /* Keep the below-video and on-video save buttons in the same state. */
+  paintSaveBtns(saved) {
+    if (this.saveBtn) this.saveBtn.textContent = saved ? "★ Saved" : "☆ Save";
+    if (this.saveBtnOv) this.saveBtnOv.textContent = saved ? "★" : "☆";
+  }
+
+  /* Keep the below-video and on-video record buttons in the same state. */
+  paintRecBtns(recording) {
+    if (this.recBtn) {
+      this.recBtn.textContent = recording ? "⏹ Stop" : "● Rec";
+      this.recBtn.classList.toggle("recording", recording);
+    }
+    if (this.recBtnOv) {
+      this.recBtnOv.textContent = recording ? "⏹" : "●";
+      this.recBtnOv.classList.toggle("recording", recording);
+    }
   }
 
   async toggleSave() {
@@ -591,12 +636,12 @@ class YtkPlayer extends HTMLElement {
       if (this.savedBmId) {
         await DEL(`/api/bookmarks/${this.savedBmId}`);
         this.savedBmId = null;
-        this.saveBtn.textContent = "☆ Save";
+        this.paintSaveBtns(false);
         toast("Removed from saved");
       } else {
         const row = await POST("/api/bookmarks", t);
         this.savedBmId = row.id;
-        this.saveBtn.textContent = "★ Saved";
+        this.paintSaveBtns(true);
         toast("Saved ★");
       }
     } catch (err) { toast("Error: " + err.message); }
@@ -676,6 +721,31 @@ class YtkPlayer extends HTMLElement {
   }
   restart() { if (this.yt && this.yt.seekTo) { this.yt.seekTo(0, true); this.yt.playVideo(); } }
 
+  toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else this.wrap.requestFullscreen && this.wrap.requestFullscreen();
+    this.vctlShow();
+  }
+
+  /* On-video overlay control bar: auto-hides after 3s idle, reappears on
+     tap (peek handle) or any player state change (e.g. tapping the video). */
+  vctlShow() {
+    if (!this.vctl || !this.currentTrack()) return;
+    this.vpeek.hidden = true;
+    this.vctl.hidden = false;
+    this.vctlArm();
+  }
+  vctlArm() {
+    clearTimeout(this.vctlTimer);
+    this.vctlTimer = setTimeout(() => this.vctlHide(), 3000);
+  }
+  vctlHide() {
+    if (!this.vctl) return;
+    clearTimeout(this.vctlTimer);
+    this.vctl.hidden = true;
+    if (this.currentTrack()) this.vpeek.hidden = false;
+  }
+
   /* ---------------- voice recorder (mic only — vocals only) ---------------- */
   pickRecMime() {
     if (window.MediaRecorder && MediaRecorder.isTypeSupported) {
@@ -730,8 +800,7 @@ class YtkPlayer extends HTMLElement {
       return;
     }
     this.recState = st;
-    this.recBtn.textContent = "⏹ Stop";
-    this.recBtn.classList.add("recording");
+    this.paintRecBtns(true);
     this.renderRecRecording();
     st.timer = setInterval(() => this.tickRecTimer(), 500);
     this.tickRecTimer();
@@ -748,8 +817,7 @@ class YtkPlayer extends HTMLElement {
     if (!st) return;
     this.recState = null;
     clearInterval(st.timer);
-    this.recBtn.textContent = "● Rec";
-    this.recBtn.classList.remove("recording");
+    this.paintRecBtns(false);
     if (st.recorder && st.recorder.state !== "inactive") {
       try { st.recorder.stop(); return; } catch (e) { /* fall through to finish */ }
     }

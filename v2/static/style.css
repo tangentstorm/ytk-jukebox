@@ -226,3 +226,36 @@ h2 .count { color: var(--muted); font-weight: 400; font-size: 1rem; }
   .singer-banner { flex-wrap: wrap; }
   .singer-banner .now, .singer-banner .next { min-width: 0; }
 }
+
+/* ---------- on-video overlay control bar (Player) ----------
+   Lives inside .player-wrap so it survives the fullscreen API.
+   Auto-hides after 3s idle; the ⋯ peek handle re-shows it. */
+.video-ctl {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
+  display: flex; gap: 10px; justify-content: center; align-items: center;
+  padding: 30px 12px 12px;
+  background: linear-gradient(0deg, rgba(0,0,0,0.8), transparent);
+}
+.video-ctl[hidden] { display: none; }
+.video-ctl button {
+  min-width: 48px; min-height: 48px;
+  font-size: 1.35rem; line-height: 1; padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(31, 24, 80, 0.88); border: 1px solid #3a2f8f;
+}
+.video-ctl button:active { transform: scale(0.93); }
+.video-ctl button.recording {
+  border-color: var(--danger); color: #ff8a92;
+  animation: recpulse 1.2s ease-in-out infinite;
+}
+/* small persistent handle so the hidden bar stays discoverable */
+.video-peek {
+  position: absolute; right: 10px; bottom: 10px; z-index: 11;
+  width: 44px; height: 44px; padding: 0;
+  border-radius: 999px; font-size: 1.25rem; line-height: 1;
+  background: rgba(31, 24, 80, 0.7); border: 1px solid #3a2f8f;
+  color: var(--muted); opacity: 0.8;
+}
+.video-peek[hidden] { display: none; }
+.player-wrap:fullscreen .video-ctl { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+.player-wrap:fullscreen .video-peek { bottom: calc(14px + env(safe-area-inset-bottom)); }
