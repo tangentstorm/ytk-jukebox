@@ -181,14 +181,14 @@ class YtkSearch extends HTMLElement {
         GET("/api/search?" + new URLSearchParams({ q: query, max: 12 })),
         GET("/api/bookmarks"),
       ]);
-      const savedIds = new Set(saved.map((b) => b.videoId));
+      const savedIds = new Set(saved.map((b) => b.video_id));
       this.empty.style.display = items.length ? "none" : "";
       if (!items.length) this.empty.textContent = "No results. Try different words.";
       for (const it of items) {
         this.results.appendChild(songCard(it, {
           bookmarkBtn: true,
           bookmarked: savedIds.has(it.videoId),
-          bmId: (saved.find((b) => b.videoId === it.videoId) || {}).id,
+          bmId: (saved.find((b) => b.video_id === it.videoId) || {}).id,
           onBookmarkChange: () => this.search(),
         }));
       }
@@ -493,7 +493,7 @@ class YtkPlayer extends HTMLElement {
     this.savePending = (async () => {
       const saved = await GET("/api/bookmarks");
       if (seq !== this.saveSeq) return; // a newer track already took over
-      const hit = saved.find((b) => b.videoId === t.videoId);
+      const hit = saved.find((b) => b.video_id === t.videoId);
       this.savedBmId = hit ? hit.id : null;
       this.saveBtn.textContent = hit ? "★ Saved" : "☆ Save";
     })().catch(() => {});
