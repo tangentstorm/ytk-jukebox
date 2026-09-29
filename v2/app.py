@@ -255,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
         if path == "/api/state":
             cmd = body.get("cmd")
-            if cmd not in ("playpause", "next", "restart", "play_id"):
+            if cmd not in ("playpause", "next", "restart", "play_id", "play_direct"):
                 return self._err(400, "unknown cmd")
             with state_lock:
                 remote_state["seq"] += 1

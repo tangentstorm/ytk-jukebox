@@ -66,14 +66,13 @@ function songCard(item, opts = {}) {
       <div class="row">
         ${opts.bookmarkBtn ? `<button class="small bm">${opts.bookmarked ? "★ Saved" : "☆ Save"}</button>` : ""}
         <button class="small primary q">+ Queue</button>
+        <button class="small play">▶ Play</button>
         ${opts.unbookmark ? `<button class="small ghost rm">Remove</button>` : ""}
       </div>
-      <div class="singer-input" hidden>
-        <input placeholder="Singer name (optional)" maxlength="60">
-        <button class="small primary go">Add</button>
+      <div class="singer-input">
+        <input placeholder="Singer name (optional)" maxlength="60" aria-label="Singer name (optional)">
       </div>
     </div>`;
-  const singerBox = el.querySelector(".singer-input");
   const singerInput = el.querySelector(".singer-input input");
   if (opts.bookmarkBtn) {
     el.querySelector(".bm").onclick = async (e) => {
@@ -90,20 +89,23 @@ function songCard(item, opts = {}) {
       } catch (err) { toast("Error: " + err.message); }
     };
   }
-  el.querySelector(".q").onclick = () => {
-    singerBox.hidden = !singerBox.hidden;
-    if (!singerBox.hidden) singerInput.focus();
-  };
-  const add = async () => {
+  const queueIt = async () => {
     try {
-      await POST("/api/queue", { ...item, singer: singerInput.value.trim() });
-      toast(`Queued${singerInput.value.trim() ? " for " + singerInput.value.trim() : ""} 🎤`);
-      singerBox.hidden = true;
+      const singer = singerInput.value.trim();
+      await POST("/api/queue", { ...item, singer });
+      toast(singer ? `Queued for ${singer} 🎤` : "Queued 🎤");
       singerInput.value = "";
     } catch (err) { toast("Error: " + err.message); }
   };
-  el.querySelector(".go").onclick = add;
-  singerInput.addEventListener("keydown", (e) => { if (e.key === "Enter") add(); });
+  el.querySelector(".q").onclick = queueIt;
+  singerInput.addEventListener("keydown", (e) => { if (e.key === "Enter") queueIt(); });
+  el.querySelector(".play").onclick = async () => {
+    try {
+      await POST("/api/state", { cmd: "play_direct", arg: { videoId: item.videoId, title: item.title } });
+      toast("▶ Playing now — one-off, queue untouched");
+      location.hash = "#/player";
+    } catch (err) { toast("Error: " + err.message); }
+  };
   if (opts.unbookmark) {
     el.querySelector(".rm").onclick = async () => {
       try { await DEL(`/api/bookmarks/${item.bmId}`); toast("Removed"); opts.onBookmarkChange && opts.onBookmarkChange(); }
@@ -124,7 +126,7 @@ class YtkSearch extends HTMLElement {
       </div>
       <label class="toggle"><input type="checkbox" id="kara" checked> append “karaoke” to the search</label>
       <div class="grid" id="results"></div>
-      <div class="empty" id="empty">Search YouTube for your song. ☆ saves it, + queues it for tonight.</div>`;
+      <div class="empty" id="empty">Search YouTube for your song. ☆ saves it, + queues it for tonight, ▶ plays it right now.</div>`;
     this.q = this.querySelector("#q");
     this.results = this.querySelector("#results");
     this.empty = this.querySelector("#empty");
@@ -286,6 +288,7 @@ class YtkPlayer extends HTMLElement {
     this.lastSeq = 0;
     this.queue = [];
     this.idx = -1;
+    this.direct = null; // one-off direct play: {videoId, title} | null
     this.yt = null;
     this.ytReady = false;
     this.innerHTML = `
@@ -361,14 +364,43 @@ class YtkPlayer extends HTMLElement {
       playerVars: { autoplay: 1, rel: 0, modestbranding: 1 },
       events: {
         onStateChange: (e) => {
-          if (e.data === YT.PlayerState.ENDED) this.advance(false);
+          if (e.data === YT.PlayerState.ENDED) {
+            if (this.direct) this.resumeQueue();
+            else this.advance(false);
+          }
         },
         onError: (e) => this.onYtError(e),
       },
     });
   }
 
+  /* One-off direct play: takes over the player without touching the queue. */
+  playDirect(arg) {
+    this.direct = { videoId: arg.videoId, title: arg.title || "Untitled" };
+    this.idx = -1;
+    this.makePlayer(this.direct.videoId);
+    this.renderBanner();
+    this.renderUpNext();
+  }
+
+  async resumeQueue() {
+    // A direct play ended or was skipped: the queue continues intact.
+    this.direct = null;
+    try { this.queue = await GET("/api/queue"); } catch (err) { /* keep going */ }
+    const items = this.activeItems();
+    if (!items.length) {
+      this.idx = -1;
+      this.querySelector("#banner-now").innerHTML = "🎤 —";
+      this.querySelector("#banner-next").textContent = "That's everything! 🎉";
+      this.renderUpNext();
+      if (this.yt) { this.yt.stopVideo(); }
+      return;
+    }
+    this.playIdx(0);
+  }
+
   async playIdx(i) {
+    this.direct = null; // queue flow always exits direct mode
     const items = this.activeItems();
     if (i < 0 || i >= items.length) {
       this.idx = -1;
@@ -391,6 +423,12 @@ class YtkPlayer extends HTMLElement {
   }
 
   renderBanner() {
+    if (this.direct) {
+      this.querySelector("#banner-now").innerHTML = `<span class="mic">🎤</span>—`;
+      this.querySelector("#banner-next").textContent =
+        `Now: ${this.direct.title} (one-off — queue paused)`;
+      return;
+    }
     const items = this.activeItems();
     const cur = items[this.idx];
     const nxt = items[this.idx + 1];
@@ -418,6 +456,7 @@ class YtkPlayer extends HTMLElement {
   }
 
   async advance(manual) {
+    if (this.direct) { this.resumeQueue(); return; } // ⏭ during a one-off → back to the queue
     const items = this.activeItems();
     const cur = items[this.idx];
     if (cur) {
@@ -433,10 +472,15 @@ class YtkPlayer extends HTMLElement {
 
   onYtError(e) {
     // 101/150 = embedding disabled, 100 = not found, 5 = HTML5 error
-    const items = this.activeItems();
-    const cur = items[this.idx];
     const label = { 2: "bad video id", 5: "player error", 100: "not found", 101: "embedding blocked", 150: "embedding blocked" }[e.data]
       || ("error " + e.data);
+    if (this.direct) {
+      toast(`⏭ Skipping "${this.direct.title}" — ${label}.`);
+      this.resumeQueue();
+      return;
+    }
+    const items = this.activeItems();
+    const cur = items[this.idx];
     toast(`⏭ Skipping “${cur ? cur.title : "video"}” — ${label}.`);
     if (cur) PATCH(`/api/queue/${cur.id}`, { status: "unplayable" }).catch(() => {});
     // drop it from the local list and continue
@@ -467,6 +511,7 @@ class YtkPlayer extends HTMLElement {
         const i = items.findIndex((x) => x.id === arg.id);
         if (i >= 0) this.playIdx(i);
       }
+      else if (cmd === "play_direct" && arg && arg.videoId) this.playDirect(arg);
     } catch (err) { /* poll failures are non-fatal */ }
   }
 }
