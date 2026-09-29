@@ -41,12 +41,45 @@ class YtkApp extends HTMLElement {
       <main id="view"></main>`;
     this.view = this.querySelector("#view");
     this.links = [...this.querySelectorAll("nav a")];
-    window.addEventListener("hashchange", () => this.route());
-    this.route();
+    this.currentTab = null;
+    // Tab switches go through the history stack so the Android/browser
+    // back button walks back through tabs instead of leaving the app.
+    this.links.forEach((a) => a.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.go(a.dataset.r, true);
+    }));
+    window.addEventListener("popstate", (e) => {
+      const tab = (e.state && e.state.tab) || this.tabFromHash();
+      this.go(tab, false);
+    });
+    // Fallback for hash changes not made through go() (e.g. address bar).
+    // popstate runs first on back/forward and sets currentTab, so this is a
+    // no-op there — no double routing.
+    window.addEventListener("hashchange", () => {
+      const tab = this.tabFromHash();
+      if (tab !== this.currentTab) this.go(tab, false);
+    });
+    // Seed the first entry: back from here exits the app — no history trap.
+    const tab = this.tabFromHash();
+    history.replaceState({ tab }, "", "#/" + tab);
+    this.go(tab, false);
+    // Programmatic navigation (e.g. ▶ Play jumping to the Player) so the
+    // back button undoes it naturally.
+    window.ytkNav = (t) => this.go(t, true);
   }
-  route() {
+  tabFromHash() {
     const r = (location.hash || "#/search").replace("#/", "") || "search";
-    const name = ["search", "saved", "queue", "player"].includes(r) ? r : "search";
+    return ["search", "saved", "queue", "player"].includes(r) ? r : "search";
+  }
+  go(tab, push) {
+    const name = ["search", "saved", "queue", "player"].includes(tab) ? tab : "search";
+    if (push) {
+      // pushState never fires hashchange, so no double routing.
+      if (!history.state || history.state.tab !== name) {
+        history.pushState({ tab: name }, "", "#/" + name);
+      }
+    }
+    this.currentTab = name;
     this.links.forEach((a) => a.classList.toggle("active", a.dataset.r === name));
     this.view.innerHTML = `<ytk-${name}></ytk-${name}>`;
     window.scrollTo(0, 0);
@@ -103,7 +136,8 @@ function songCard(item, opts = {}) {
     try {
       await POST("/api/state", { cmd: "play_direct", arg: { videoId: item.videoId, title: item.title } });
       toast("▶ Playing now — one-off, queue untouched");
-      location.hash = "#/player";
+      if (window.ytkNav) window.ytkNav("player");
+      else location.hash = "#/player";
     } catch (err) { toast("Error: " + err.message); }
   };
   if (opts.unbookmark) {
@@ -303,14 +337,20 @@ class YtkPlayer extends HTMLElement {
         <button class="small" id="p-play">⏯ Play/Pause</button>
         <button class="small" id="p-next">⏭ Next</button>
         <button class="small" id="p-restart">↺ Restart</button>
+        <button class="small bm" id="p-save" hidden>☆ Save</button>
         <span class="spacer"></span>
         <button class="small" id="p-fs">⛶ Fullscreen</button>
       </div>
       <div class="upnext"><h2>Up next</h2><div id="upnext"></div></div>`;
     this.wrap = this.querySelector("#wrap");
+    this.saveBtn = this.querySelector("#p-save");
+    this.savedBmId = null;   // bookmark id of the current track, if saved
+    this.saveSeq = 0;        // guards refreshSaveBtn against track-change races
+    this.savePending = null;
     this.querySelector("#p-play").onclick = () => this.togglePlay();
     this.querySelector("#p-next").onclick = () => this.advance(true);
     this.querySelector("#p-restart").onclick = () => this.restart();
+    this.saveBtn.onclick = () => this.toggleSave();
     this.querySelector("#p-fs").onclick = () => {
       if (document.fullscreenElement) document.exitFullscreen();
       else this.wrap.requestFullscreen && this.wrap.requestFullscreen();
@@ -351,6 +391,7 @@ class YtkPlayer extends HTMLElement {
       this.querySelector("#banner-now").innerHTML = "🎤 —";
       this.querySelector("#banner-next").textContent = "Queue is empty — add songs from Search.";
       this.renderUpNext();
+      this.refreshSaveBtn();
       return;
     }
     this.idx = 0;
@@ -381,6 +422,7 @@ class YtkPlayer extends HTMLElement {
     this.makePlayer(this.direct.videoId);
     this.renderBanner();
     this.renderUpNext();
+    this.refreshSaveBtn();
   }
 
   async resumeQueue() {
@@ -393,6 +435,7 @@ class YtkPlayer extends HTMLElement {
       this.querySelector("#banner-now").innerHTML = "🎤 —";
       this.querySelector("#banner-next").textContent = "That's everything! 🎉";
       this.renderUpNext();
+      this.refreshSaveBtn();
       if (this.yt) { this.yt.stopVideo(); }
       return;
     }
@@ -407,6 +450,7 @@ class YtkPlayer extends HTMLElement {
       this.querySelector("#banner-now").innerHTML = "🎤 —";
       this.querySelector("#banner-next").textContent = "That's everything! 🎉";
       this.renderUpNext();
+      this.refreshSaveBtn();
       if (this.yt) { this.yt.stopVideo(); }
       return;
     }
@@ -420,6 +464,59 @@ class YtkPlayer extends HTMLElement {
     this.makePlayer(it.video_id);
     this.renderBanner();
     this.renderUpNext();
+    this.refreshSaveBtn();
+  }
+
+  /* The track on screen right now — from the queue, or a one-off direct play. */
+  currentTrack() {
+    if (this.direct) {
+      return { videoId: this.direct.videoId, title: this.direct.title, channel: "", thumb: "" };
+    }
+    const items = this.activeItems();
+    const cur = items[this.idx];
+    return cur
+      ? { videoId: cur.video_id, title: cur.title, channel: cur.channel, thumb: cur.thumb }
+      : null;
+  }
+
+  /* Sync the ☆/★ button with the saved list for the current track.
+     Hidden when nothing is playing. Never touches queue or playback. */
+  refreshSaveBtn() {
+    const t = this.currentTrack();
+    if (!t) {
+      this.saveBtn.hidden = true;
+      this.savedBmId = null;
+      return Promise.resolve();
+    }
+    this.saveBtn.hidden = false;
+    const seq = ++this.saveSeq;
+    this.savePending = (async () => {
+      const saved = await GET("/api/bookmarks");
+      if (seq !== this.saveSeq) return; // a newer track already took over
+      const hit = saved.find((b) => b.videoId === t.videoId);
+      this.savedBmId = hit ? hit.id : null;
+      this.saveBtn.textContent = hit ? "★ Saved" : "☆ Save";
+    })().catch(() => {});
+    return this.savePending;
+  }
+
+  async toggleSave() {
+    const t = this.currentTrack();
+    if (!t) return;
+    if (this.savePending) { try { await this.savePending; } catch (e) { /* fall through */ } }
+    try {
+      if (this.savedBmId) {
+        await DEL(`/api/bookmarks/${this.savedBmId}`);
+        this.savedBmId = null;
+        this.saveBtn.textContent = "☆ Save";
+        toast("Removed from saved");
+      } else {
+        const row = await POST("/api/bookmarks", t);
+        this.savedBmId = row.id;
+        this.saveBtn.textContent = "★ Saved";
+        toast("Saved ★");
+      }
+    } catch (err) { toast("Error: " + err.message); }
   }
 
   renderBanner() {
