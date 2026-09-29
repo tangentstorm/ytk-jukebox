@@ -11,7 +11,7 @@
   --ok: #35d07f;
 }
 * { box-sizing: border-box; }
-html, body { height: 100%; }
+html, body { height: 100%; overflow-x: clip; }
 body {
   margin: 0;
   background: radial-gradient(1200px 800px at 20% -10%, #241a5e 0%, var(--bg) 55%) fixed,
@@ -158,9 +158,42 @@ h2 .count { color: var(--muted); font-weight: 400; font-size: 1rem; }
 }
 .upnext { margin-top: 16px; }
 .upnext .qitem { margin-bottom: 8px; }
+
+/* ---------- phone layout (360–430px viewports, Android Chrome) ----------
+   Responsive only: desktop rules above are untouched. */
 @media (max-width: 640px) {
-  .qitem img { width: 84px; }
-  .qitem .ctl { width: 100%; justify-content: flex-start; }
-  .nav a { padding: 8px 10px; }
+  /* thumb-friendly nav: four even tabs, 44px+ tap targets */
+  .nav { padding: 8px; gap: 2px; }
   .brand { font-size: 1.05rem; margin-right: 4px; }
+  .nav a {
+    flex: 1 1 0; text-align: center; padding: 8px 4px;
+    min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
+  }
+  main { padding: 14px 10px 60px; }
+
+  /* every button thumb-sized, readable labels */
+  button, .btn { min-height: 44px; }
+  button.small { min-height: 44px; padding: 10px 12px; font-size: 0.95rem; }
+
+  /* search results: single full-width column, full-width action row */
+  .grid { grid-template-columns: 1fr; }
+  .card .row button { flex: 1 1 0; }
+  .singer-input input { font-size: 1rem; padding: 10px 12px; }
+
+  /* queue rows: thumb + info on top, big full-width control row below */
+  .qitem { flex-wrap: wrap; gap: 8px; }
+  .qitem img { width: 84px; }
+  .qitem .ctl { width: 100%; justify-content: stretch; }
+  .qitem .ctl button { flex: 1 1 0; }
+  .qitem .singer input { width: 100%; max-width: 100%; font-size: 1rem; padding: 8px 10px; }
+
+  /* KJ toolbar: buttons share the row */
+  .toolbar button { flex: 1 1 auto; }
+  .toolbar .spacer { display: none; }
+
+  /* player: big controls, banner parts can't overflow */
+  .player-ctl button { flex: 1 1 auto; min-height: 48px; }
+  .player-ctl .spacer { display: none; }
+  .singer-banner { flex-wrap: wrap; }
+  .singer-banner .now, .singer-banner .next { min-width: 0; }
 }
