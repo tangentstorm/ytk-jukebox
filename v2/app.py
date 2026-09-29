@@ -6,6 +6,7 @@ Serves the web-component frontend and a small JSON API.
 YouTube search goes through the local youtube-proxy (127.0.0.1:8472)
 so the proxy Bearer token never reaches the browser.
 """
+import hashlib
 import json
 import os
 import re
@@ -171,6 +172,35 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _serve_index(self):
+        # index.html is served dynamically so local assets get a content-hash
+        # version query (?v=...). Phones cache style.css/app.js aggressively;
+        # the version changes on every deploy that touches them, so a stale
+        # cached copy can never mask a new layout.
+        try:
+            with open(os.path.join(STATIC_DIR, "index.html"), "rb") as f:
+                html = f.read().decode("utf-8")
+        except OSError:
+            return self._err(404, "not found")
+
+        def ver(name):
+            try:
+                with open(os.path.join(STATIC_DIR, name), "rb") as f:
+                    h = hashlib.sha1(f.read()).hexdigest()[:10]
+            except OSError:
+                h = "0"
+            return "/static/%s?v=%s" % (name, h)
+
+        html = html.replace("/static/style.css", ver("style.css"))
+        html = html.replace("/static/app.js", ver("app.js"))
+        body = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
     # ---- GET ---------------------------------------------------------
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -204,7 +234,7 @@ class Handler(BaseHTTPRequestHandler):
             with state_lock:
                 return self._json(dict(remote_state))
         if path in ("/", "/index.html"):
-            return self._serve("index.html")
+            return self._serve_index()
         if path.startswith("/static/"):
             return self._serve(path[len("/static/"):])
         return self._err(404, "not found")
