@@ -1,0 +1,261 @@
+:root {
+  --bg: #0d0a1a;
+  --panel: #171231;
+  --panel2: #1f1850;
+  --accent: #ff2fb3;
+  --accent2: #28e0ff;
+  --gold: #ffd166;
+  --text: #f2efff;
+  --muted: #9d94c7;
+  --danger: #ff5964;
+  --ok: #35d07f;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; overflow-x: clip; }
+body {
+  margin: 0;
+  background: radial-gradient(1200px 800px at 20% -10%, #241a5e 0%, var(--bg) 55%) fixed,
+              var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+ytk-app { display: block; min-height: 100vh; }
+
+/* top nav */
+.nav {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; gap: 4px; align-items: center;
+  padding: 10px 14px;
+  background: rgba(13, 10, 26, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #2c2470;
+}
+.brand {
+  font-weight: 800; letter-spacing: 1px; margin-right: 12px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-size: 1.25rem; white-space: nowrap;
+}
+.nav a {
+  color: var(--muted); text-decoration: none;
+  padding: 8px 14px; border-radius: 999px; font-weight: 600;
+}
+.nav a.active { color: #fff; background: var(--panel2); box-shadow: inset 0 0 0 1px #3a2f8f; }
+main { max-width: 1060px; margin: 0 auto; padding: 18px 14px 60px; }
+
+/* search */
+.searchbar { display: flex; gap: 8px; margin-bottom: 6px; }
+.searchbar input[type="search"] {
+  flex: 1; font-size: 1.05rem; padding: 12px 14px;
+  border-radius: 12px; border: 1px solid #3a2f8f;
+  background: var(--panel); color: var(--text);
+}
+button, .btn {
+  font: inherit; font-weight: 700; cursor: pointer;
+  border: 1px solid #3a2f8f; border-radius: 12px;
+  background: var(--panel2); color: var(--text);
+  padding: 10px 16px;
+}
+button.primary, .btn.primary {
+  background: linear-gradient(90deg, var(--accent), #b04dff);
+  border: none; color: #fff;
+}
+button.ghost { background: transparent; }
+button.small { padding: 6px 10px; font-size: 0.85rem; border-radius: 9px; }
+button.small.play { border-color: var(--gold); color: var(--gold); }
+button:disabled { opacity: 0.45; cursor: default; }
+.toggle { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.9rem; margin: 8px 2px 14px; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* cards / lists */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.card {
+  background: var(--panel); border: 1px solid #2c2470; border-radius: 14px;
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.card img.thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #000; display: block; }
+.card .meta { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.card .title { font-weight: 700; font-size: 0.95rem; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card .channel { color: var(--muted); font-size: 0.82rem; }
+.card .row { display: flex; gap: 6px; margin-top: auto; flex-wrap: wrap; }
+.singer-input { display: flex; gap: 6px; }
+.singer-input input {
+  flex: 1; min-width: 0; padding: 8px 10px; border-radius: 9px;
+  border: 1px solid #3a2f8f; background: #0d0a1a; color: var(--text); font: inherit; font-size: 0.9rem;
+}
+.empty { color: var(--muted); text-align: center; padding: 40px 10px; }
+h2 { margin: 6px 0 14px; font-size: 1.3rem; }
+h2 .count { color: var(--muted); font-weight: 400; font-size: 1rem; }
+
+/* queue */
+.qitem {
+  display: flex; gap: 12px; align-items: center;
+  background: var(--panel); border: 1px solid #2c2470; border-radius: 14px;
+  padding: 10px 12px; margin-bottom: 10px;
+}
+.qitem.playing { border-color: var(--accent); box-shadow: 0 0 18px rgba(255, 47, 179, 0.35); }
+.qitem.played { opacity: 0.55; }
+.qitem .pos {
+  font-size: 1.4rem; font-weight: 800; color: var(--muted);
+  min-width: 34px; text-align: center;
+}
+.qitem.playing .pos { color: var(--accent); }
+.qitem img { width: 120px; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; background: #000; }
+.qitem .info { flex: 1; min-width: 0; }
+.qitem .title { font-weight: 700; }
+.qitem .singer { color: var(--gold); font-weight: 700; margin-top: 2px; }
+.qitem .singer input {
+  background: #0d0a1a; border: 1px solid #3a2f8f; color: var(--gold);
+  border-radius: 8px; padding: 4px 8px; font: inherit; font-weight: 700; width: 180px;
+}
+.qitem .badge {
+  display: inline-block; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.5px;
+  padding: 2px 8px; border-radius: 999px; margin-left: 8px; vertical-align: middle;
+  text-transform: uppercase;
+}
+.badge.playing { background: var(--accent); color: #fff; }
+.badge.unplayable { background: var(--danger); color: #fff; }
+.badge.played { background: #3a3f5e; color: #cfd; }
+.qitem .ctl { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.toolbar .spacer { flex: 1; }
+.nowbar {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  background: var(--panel2); border: 1px solid #3a2f8f; border-radius: 14px;
+  padding: 10px 14px; margin-bottom: 14px;
+}
+.nowbar .label { color: var(--muted); font-size: 0.85rem; }
+.nowbar .who { font-weight: 800; color: var(--gold); }
+
+/* player */
+.player-wrap {
+  position: relative; background: #000; border-radius: 14px; overflow: hidden;
+  border: 1px solid #2c2470;
+}
+.player-wrap:fullscreen { border-radius: 0; border: none; }
+.player-wrap:fullscreen #ytplayer { height: 100vh; }
+#ytplayer { width: 100%; aspect-ratio: 16/9; display: block; }
+.singer-banner {
+  position: absolute; top: 0; left: 0; right: 0;
+  padding: 14px 18px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(0,0,0,0.75), transparent);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+}
+.singer-banner .now { font-size: clamp(1.2rem, 4vw, 2.2rem); font-weight: 900; color: #fff; text-shadow: 0 2px 12px #000; }
+.singer-banner .now .mic { margin-right: 10px; }
+.singer-banner .next { color: var(--gold); font-weight: 700; font-size: clamp(0.8rem, 2.4vw, 1.05rem); text-shadow: 0 2px 8px #000; text-align: right; }
+.player-ctl {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  margin-top: 12px;
+}
+.player-ctl .spacer { flex: 1; }
+#p-rec.recording { border-color: var(--danger); color: #ff8a92; }
+
+/* voice recorder (mic only — vocals only) */
+.rec-panel {
+  margin-top: 12px; background: var(--panel); border: 1px solid #3a2f8f;
+  border-radius: 14px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.rec-panel[hidden] { display: none; }
+.rec-status { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.05rem; }
+.rec-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--danger); flex: none;
+  animation: recpulse 1.2s ease-in-out infinite;
+}
+.rec-dot.done { animation: none; background: var(--ok); }
+@keyframes recpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.rec-timer { font-variant-numeric: tabular-nums; font-size: 1.15rem; color: #ff8a92; }
+.rec-note { color: var(--muted); font-size: 0.88rem; line-height: 1.4; }
+.rec-note b { color: var(--text); }
+.rec-panel audio { width: 100%; min-height: 44px; }
+.rec-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.rec-actions .btn, .rec-actions button { flex: 1 1 auto; text-align: center; text-decoration: none; display: inline-block; }
+.toast {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+  background: #241a5e; border: 1px solid #3a2f8f; color: var(--text);
+  padding: 12px 20px; border-radius: 12px; z-index: 200;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.5); max-width: 90vw;
+}
+.upnext { margin-top: 16px; }
+.upnext .qitem { margin-bottom: 8px; }
+
+/* voice-search mic button in the search bar */
+.searchbar #mic { font-size: 1.2rem; padding: 10px 14px; min-width: 52px; }
+.searchbar #mic.listening { background: #5e1a1a; border-color: var(--danger); animation: recpulse 1.2s infinite; }
+.mic-hint { color: var(--gold); font-weight: 700; margin: 2px 0 6px; }
+.mic-hint[hidden] { display: none; }
+
+/* ---------- phone layout (360–430px viewports, Android Chrome) ----------
+   Responsive only: desktop rules above are untouched. */
+@media (max-width: 640px) {
+  /* thumb-friendly nav: four even tabs, 44px+ tap targets */
+  .nav { padding: 8px; gap: 2px; }
+  .brand { font-size: 1.05rem; margin-right: 4px; }
+  .nav a {
+    flex: 1 1 0; text-align: center; padding: 8px 4px;
+    min-height: 44px; display: inline-flex; align-items: center; justify-content: center;
+  }
+  main { padding: 14px 10px 60px; }
+
+  /* every button thumb-sized, readable labels */
+  button, .btn { min-height: 44px; }
+  button.small { min-height: 44px; padding: 10px 12px; font-size: 0.95rem; }
+
+  /* search results: single full-width column, full-width action row */
+  .grid { grid-template-columns: 1fr; }
+  .card .row button { flex: 1 1 0; }
+  .singer-input input { font-size: 1rem; padding: 10px 12px; }
+
+  /* queue rows: thumb + info on top, big full-width control row below */
+  .qitem { flex-wrap: wrap; gap: 8px; }
+  .qitem img { width: 84px; }
+  .qitem .ctl { width: 100%; justify-content: stretch; }
+  .qitem .ctl button { flex: 1 1 0; }
+  .qitem .singer input { width: 100%; max-width: 100%; font-size: 1rem; padding: 8px 10px; }
+
+  /* KJ toolbar: buttons share the row */
+  .toolbar button { flex: 1 1 auto; }
+  .toolbar .spacer { display: none; }
+
+  /* player: big controls, banner parts can't overflow */
+  .player-ctl button { flex: 1 1 auto; min-height: 48px; }
+  .player-ctl .spacer { display: none; }
+  .singer-banner { flex-wrap: wrap; }
+  .singer-banner .now, .singer-banner .next { min-width: 0; }
+}
+
+/* ---------- on-video overlay control bar (Player) ----------
+   Lives inside .player-wrap so it survives the fullscreen API.
+   Auto-hides after 3s idle; the ⋯ peek handle re-shows it. */
+.video-ctl {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 10;
+  display: flex; gap: 10px; justify-content: center; align-items: center;
+  padding: 30px 12px 12px;
+  background: linear-gradient(0deg, rgba(0,0,0,0.8), transparent);
+}
+.video-ctl[hidden] { display: none; }
+.video-ctl button {
+  min-width: 48px; min-height: 48px;
+  font-size: 1.35rem; line-height: 1; padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(31, 24, 80, 0.88); border: 1px solid #3a2f8f;
+}
+.video-ctl button:active { transform: scale(0.93); }
+.video-ctl button.recording {
+  border-color: var(--danger); color: #ff8a92;
+  animation: recpulse 1.2s ease-in-out infinite;
+}
+/* small persistent handle so the hidden bar stays discoverable */
+.video-peek {
+  position: absolute; right: 10px; bottom: 10px; z-index: 11;
+  width: 44px; height: 44px; padding: 0;
+  border-radius: 999px; font-size: 1.25rem; line-height: 1;
+  background: rgba(31, 24, 80, 0.7); border: 1px solid #3a2f8f;
+  color: var(--muted); opacity: 0.8;
+}
+.video-peek[hidden] { display: none; }
+.player-wrap:fullscreen .video-ctl { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+.player-wrap:fullscreen .video-peek { bottom: calc(14px + env(safe-area-inset-bottom)); }
